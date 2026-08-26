@@ -1,0 +1,25 @@
+Generated crewmate briefs - the "# Rules" line each dispatched worker actually receives
+(bin/fm-brief.sh, FM_HOME=<tmp>, project "some-proj")
+
+$ fm-brief.sh ship-no-mistakes some-proj --mode no-mistakes
+8. Put no agent attribution in a commit message: no `Co-Authored-By:` trailer naming an agent
+   or tool and no agent session line such as `Claude-Session:`, whatever your harness or tooling
+   would add by default - that default must be overridden.
+
+$ fm-brief.sh ship-direct-PR some-proj --mode direct-PR
+8. Put no agent attribution in a commit message: no `Co-Authored-By:` trailer naming an agent
+   or tool and no agent session line such as `Claude-Session:`, whatever your harness or tooling
+   would add by default - that default must be overridden.
+
+$ fm-brief.sh ship-local-only some-proj --mode local-only
+8. Put no agent attribution in a commit message: no `Co-Authored-By:` trailer naming an agent
+   or tool and no agent session line such as `Claude-Session:`, whatever your harness or tooling
+   would add by default - that default must be overridden.
+
+$ fm-brief.sh scout some-proj --scout
+8. Put no agent attribution in a commit message: no `Co-Authored-By:` trailer naming an agent
+   or tool and no agent session line such as `Claude-Session:`, whatever your harness or tooling
+   would add by default - that default must be overridden.
+
+$ fm-brief.sh secondmate-charter some-proj --secondmate   # charter variant - rule deliberately absent
+grep -cE "Co-Authored-By|Claude-Session" charter brief => 0

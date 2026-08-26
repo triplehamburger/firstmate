@@ -1,0 +1,9 @@
+Regression proof for tests/fm-brief.test.sh::test_commit_variants_forbid_agent_attribution
+
+== bin/fm-brief.sh with rule 8 stripped from both Rules blocks (copy in a temp dir) ==
+$ bash tests/fm-brief.test.sh
+not ok - brief-ca-nm: brief does not forbid agent attribution in commit messages
+
+== bin/fm-brief.sh as committed at d84f28c ==
+$ bash tests/fm-brief.test.sh
+ok - fm-brief.sh: commit-producing briefs forbid agent co-author trailers
