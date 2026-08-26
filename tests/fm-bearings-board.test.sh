@@ -150,6 +150,27 @@ test_build_refuses_malformed_payloads_before_touching_the_board() {
   [ "$rc" -ne 0 ] || fail "a dispatchable warning row was accepted"
 
   write_valid_payload "$data"
+  jq '.claude_usage = {"session": {"percent_used": 142}}' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "an out-of-range usage percent was accepted"
+
+  write_valid_payload "$data"
+  jq '.claude_usage = {"week": {"percent_used": "42"}}' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a non-numeric usage percent was accepted"
+
+  write_valid_payload "$data"
+  jq '.claude_usage = {"session": {"percent_used": 10, "resets_at": 1770000000}}' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a non-string usage reset time was accepted"
+
+  write_valid_payload "$data"
+  jq '.claude_usage = "42%"' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a non-object claude_usage was accepted"
+  [ ! -e "$board" ] || fail "a refused payload still touched the board"
+
+  write_valid_payload "$data"
   jq '.charted_warning_more = -1' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
   [ "$rc" -ne 0 ] || fail "a negative omitted-warning count was accepted"
@@ -385,6 +406,35 @@ test_build_refuses_a_template_without_exactly_one_slot() {
   pass "build refuses a template without exactly one data slot"
 }
 
+test_claude_usage_is_optional_and_round_trips() {
+  local home data
+  home=$(make_home usage)
+  data="$home/payload.json"
+
+  write_valid_payload "$data"
+  run_board "$home" build "$data" >/dev/null || fail "a payload without claude_usage was refused"
+  extract_payload "$home/.lavish/bearings-board.html" | jq -e 'has("claude_usage") | not' >/dev/null \
+    || fail "an omitted claude_usage appeared in the built board"
+
+  write_valid_payload "$data"
+  jq '.claude_usage = {
+        "session": {"percent_used": 42, "resets_at": "2026-08-26T18:00:00Z"},
+        "week": {"percent_used": null}
+      }' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null || fail "a valid claude_usage was refused"
+  extract_payload "$home/.lavish/bearings-board.html" | jq -e '
+    .claude_usage.session.percent_used == 42
+      and .claude_usage.session.resets_at == "2026-08-26T18:00:00Z"
+      and (.claude_usage.week | has("percent_used") and .percent_used == null)
+  ' >/dev/null || fail "the built board did not carry the usage figures it was given"
+
+  write_valid_payload "$data"
+  jq '.claude_usage = {"session": {}}' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "a window without a percent was refused"
+  pass "claude_usage is optional and round-trips its two windows"
+}
+
 test_charted_kind_is_optional_and_accepts_both_values() {
   local home data
   home=$(make_home chartedkind)
@@ -407,6 +457,7 @@ test_charted_kind_is_optional_and_accepts_both_values() {
 test_path_is_stable_and_home_scoped
 test_build_refuses_malformed_payloads_before_touching_the_board
 test_charted_kind_is_optional_and_accepts_both_values
+test_claude_usage_is_optional_and_round_trips
 test_build_injects_binds_then_arms
 test_registration_cannot_consume_before_any_origin_binding
 test_build_does_not_bind_or_arm_when_session_start_fails

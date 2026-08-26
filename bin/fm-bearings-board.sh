@@ -36,6 +36,13 @@
 # the template may display the routing id. Anything else refuses before the
 # existing board is touched.
 #
+# The optional `claude_usage` object carries the captain's Claude token usage as
+# a build-time snapshot, with an optional `session` and an optional `week`
+# window. Each window is an object whose `percent_used` is an integer 0-100, or
+# null when that figure is unavailable, plus an optional ISO 8601 `resets_at`.
+# An omitted window is unavailable exactly like a null `percent_used`, and an
+# omitted `claude_usage` renders no usage widget at all.
+#
 # The board path is stable - $FM_HOME/.lavish/bearings-board.html - so a
 # re-invocation rebuilds the same file in place, which keeps the same Lavish
 # session URL and the same canonical process-event source id. Injection escapes
@@ -79,6 +86,12 @@ validate_payload() {  # <data.json>
       or (.[$name]
         | type == "string"
           and test("^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][^[:space:]]*)?$"));
+    def usage_window:
+      type == "object"
+      and ((has("percent_used") | not) or (.percent_used == null)
+        or ((.percent_used | type == "number")
+          and (.percent_used >= 0) and (.percent_used <= 100) and (.percent_used | floor == .)))
+      and optional_string("resets_at");
     def call_item:
       type == "object"
       and (.key | slug(128))
@@ -129,6 +142,9 @@ validate_payload() {  # <data.json>
       or ((.charted_more | type == "number") and (.charted_more >= 0) and (.charted_more | floor == .)))
     and ((has("charted_warning_more") | not)
       or ((.charted_warning_more | type == "number") and (.charted_warning_more >= 0) and (.charted_warning_more | floor == .)))
+    and ((has("claude_usage") | not)
+      or ((.claude_usage | type == "object")
+        and ([.claude_usage | (.session, .week) | select(. != null) | usage_window] | all)))
     and ([.captains_call[] | call_item] | all)
     and ([.underway[] | underway_item] | all)
     and ([.landed[] | landed_item] | all)

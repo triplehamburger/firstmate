@@ -41,6 +41,21 @@ render() {  # <home> <charted-json> [charted_more] [charted_warning_more]
     || fail "the built board could not be rendered"
 }
 
+# Build the board with <usage-json> ("null" omits the field) and render it.
+render_usage() {  # <home> <usage-json> [tz]
+  local home=$1 usage=$2 tz=${3:-UTC} data="$1/payload.json"
+  jq -n --argjson usage "$usage" '{
+    schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-26T00:00Z",
+    prs_live:false, captains_call:[], underway:[], landed:[], charted:[]}
+    + (if $usage == null then {} else {claude_usage:$usage} end)' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  TZ="$tz" node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
 charted_next_count() {  # <render-json>
   printf '%s' "$1" | jq -r '.stats[] | select(.label == "charted next") | .n'
 }
@@ -128,8 +143,62 @@ test_an_omitted_kind_keeps_the_existing_queued_rendering() {
   pass "an omitted kind renders exactly as queued work always did"
 }
 
+
+test_both_usage_bars_render_with_their_percent_used() {
+  local home out
+  home=$(make_home usage-both)
+  out=$(render_usage "$home" '{"session":{"percent_used":42,"resets_at":"2026-08-26T18:00:00Z"},"week":{"percent_used":71}}')
+  printf '%s' "$out" | jq -e '
+    .usage.hidden == false
+      and ([.usage.items[].label] == ["session", "week"])
+      and (.usage.items[0] | .pct == "42% used" and .unknown == false and (.fill | test("42%")))
+      and (.usage.items[1] | .pct == "71% used" and .unknown == false and (.fill | test("71%")))
+  ' >/dev/null || fail "the usage bars did not render both windows: $out"
+  pass "the session and week bars render their percent used and a proportional fill"
+}
+
+test_the_session_bar_shows_its_reset_in_the_viewers_local_time() {
+  local home out_tokyo out_utc
+  home=$(make_home usage-reset)
+  out_tokyo=$(render_usage "$home" '{"session":{"percent_used":10,"resets_at":"2026-08-26T18:00:00Z"},"week":{"percent_used":20}}' Asia/Tokyo)
+  out_utc=$(render_usage "$home" '{"session":{"percent_used":10,"resets_at":"2026-08-26T18:00:00Z"},"week":{"percent_used":20}}' UTC)
+  printf '%s' "$out_tokyo" | jq -e '
+    (.usage.items[0].reset | test("^resets .*3:00")) and (.usage.items[1].reset == null)
+  ' >/dev/null || fail "the session reset did not render in the viewer local time: $out_tokyo"
+  [ "$(printf '%s' "$out_tokyo" | jq -r '.usage.items[0].reset')" \
+    != "$(printf '%s' "$out_utc" | jq -r '.usage.items[0].reset')" ] \
+    || fail "the same reset instant rendered identically in two time zones: $out_tokyo"
+  pass "the session bar shows its reset time converted to the viewer time zone"
+}
+
+test_an_unavailable_window_never_reads_as_zero_percent() {
+  local home out
+  home=$(make_home usage-unavailable)
+  out=$(render_usage "$home" '{"session":{"percent_used":null},"week":{}}')
+  printf '%s' "$out" | jq -e '
+    .usage.hidden == false and ([.usage.items[].label] == ["session", "week"])
+      and ([.usage.items[] | .pct] == ["unavailable", "unavailable"])
+      and ([.usage.items[] | .unknown] == [true, true])
+      and ([.usage.items[] | .fill] == [null, null])
+  ' >/dev/null || fail "an unavailable window rendered as a figure: $out"
+  pass "a null or missing percent renders an explicit unavailable state, never 0%"
+}
+
+test_an_omitted_usage_field_renders_no_widget() {
+  local home out
+  home=$(make_home usage-absent)
+  out=$(render_usage "$home" null)
+  printf '%s' "$out" | jq -e '.error == "" and .usage.hidden == true and (.usage.items | length) == 0' \
+    >/dev/null || fail "an omitted usage field still produced a widget: $out"
+  pass "an omitted usage field renders nothing at all"
+}
+
 test_a_warning_row_reads_as_a_repair_not_as_queued_work
 test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
+test_both_usage_bars_render_with_their_percent_used
+test_the_session_bar_shows_its_reset_in_the_viewers_local_time
+test_an_unavailable_window_never_reads_as_zero_percent
+test_an_omitted_usage_field_renders_no_widget
