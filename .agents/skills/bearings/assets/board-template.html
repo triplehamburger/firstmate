@@ -469,13 +469,13 @@ __FM_BEARINGS_BOARD_DATA__
   /* nav usage bars: a snapshot of the payload, absent field renders nothing */
   if (data.claude_usage && typeof data.claude_usage === "object") {
     var usageBox = document.getElementById("bb-usage");
-    [["session", "session"], ["week", "week"]].forEach(function (pair) {
-      var w = data.claude_usage[pair[0]];
+    ["session", "week"].forEach(function (key) {
+      var w = data.claude_usage[key];
       var pct = w && typeof w.percent_used === "number"
         ? Math.max(0, Math.min(100, Math.round(w.percent_used))) : null;
       var item = el("div", "bb-usage__item");
       var head = el("div", "bb-usage__head");
-      head.appendChild(el("span", "bb-usage__label", pair[1]));
+      head.appendChild(el("span", "bb-usage__label", key));
       head.appendChild(el("span", "bb-usage__pct", pct === null ? "unavailable" : pct + "% used"));
       item.appendChild(head);
       var bar = el("div", "bb-usage__bar" + (pct === null ? " bb-usage__bar--unknown" : ""));
@@ -485,11 +485,12 @@ __FM_BEARINGS_BOARD_DATA__
         bar.appendChild(fill);
       }
       item.appendChild(bar);
-      if (pair[0] === "session" && w && typeof w.resets_at === "string") {
+      if (key === "session" && w && typeof w.resets_at === "string") {
         var at = new Date(w.resets_at);
         if (!isNaN(at.getTime())) {
           item.appendChild(el("div", "bb-usage__reset",
-            "resets " + at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })));
+            "resets " + at.toLocaleString([],
+              { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })));
         }
       }
       usageBox.appendChild(item);

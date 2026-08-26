@@ -163,7 +163,8 @@ test_the_session_bar_shows_its_reset_in_the_viewers_local_time() {
   out_tokyo=$(render_usage "$home" '{"session":{"percent_used":10,"resets_at":"2026-08-26T18:00:00Z"},"week":{"percent_used":20}}' Asia/Tokyo)
   out_utc=$(render_usage "$home" '{"session":{"percent_used":10,"resets_at":"2026-08-26T18:00:00Z"},"week":{"percent_used":20}}' UTC)
   printf '%s' "$out_tokyo" | jq -e '
-    (.usage.items[0].reset | test("^resets .*3:00")) and (.usage.items[1].reset == null)
+    (.usage.items[0].reset | test("^resets Aug 27") and test("3:00"))
+      and (.usage.items[1].reset == null)
   ' >/dev/null || fail "the session reset did not render in the viewer local time: $out_tokyo"
   [ "$(printf '%s' "$out_tokyo" | jq -r '.usage.items[0].reset')" \
     != "$(printf '%s' "$out_utc" | jq -r '.usage.items[0].reset')" ] \
