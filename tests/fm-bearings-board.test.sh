@@ -164,10 +164,6 @@ test_build_refuses_malformed_payloads_before_touching_the_board() {
   set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
   [ "$rc" -ne 0 ] || fail "a non-string usage reset time was accepted"
 
-  write_valid_payload "$data"
-  jq '.claude_usage = {"week": {"percent_used": 10, "resets_at": "2026-08-26T18:00:00Z"}}' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
-  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
-  [ "$rc" -ne 0 ] || fail "a reset time on the week window was accepted"
 
   write_valid_payload "$data"
   jq '.claude_usage = "42%"' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
@@ -437,6 +433,18 @@ test_claude_usage_is_optional_and_round_trips() {
   jq '.claude_usage = {"session": {}}' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   run_board "$home" build "$data" >/dev/null \
     || fail "a window without a percent was refused"
+
+  write_valid_payload "$data"
+  jq '.claude_usage = null' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null || fail "a null claude_usage was refused"
+
+  write_valid_payload "$data"
+  jq '.claude_usage = {
+        "session": {"percent_used": null, "resets_at": null},
+        "week": {"percent_used": 71, "resets_at": "2026-08-31T00:00:00Z"}
+      }' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "a null reset time or an unread week reset time was refused"
   pass "claude_usage is optional and round-trips its two windows"
 }
 

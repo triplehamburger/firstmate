@@ -38,12 +38,15 @@
 #
 # The optional `claude_usage` object carries the captain's Claude token usage as
 # a build-time snapshot, with an optional `session` and an optional `week`
-# window. Each window is an object whose `percent_used` is an integer 0-100, or
-# null when that figure is unavailable. Only the `session` window carries a
-# reset time - an optional ISO 8601 `resets_at` - because only that bar renders
-# one; a `resets_at` on the `week` window refuses the build.
-# An omitted window is unavailable exactly like a null `percent_used`, and an
-# omitted `claude_usage` renders no usage widget at all.
+# window. Each window is an object whose `percent_used` is an integer 0-100 and
+# whose `resets_at` is an ISO 8601 string. Every part of this field is optional
+# and degrades rather than refuses: an absent key, an explicit null, or a key
+# the widget never reads means not supplied, so a null or omitted window is
+# unavailable exactly like a null `percent_used`, and a null or omitted
+# `claude_usage` renders no usage widget at all. Only the `session` bar renders
+# a reset time; a `resets_at` on the `week` window is carried but never shown.
+# A value of the wrong type - a non-numeric or out-of-range percent, a
+# non-string reset time, a non-object window - still refuses the build.
 #
 # The board path is stable - $FM_HOME/.lavish/bearings-board.html - so a
 # re-invocation rebuilds the same file in place, which keeps the same Lavish
@@ -90,11 +93,9 @@ validate_payload() {  # <data.json>
           and test("^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][^[:space:]]*)?$"));
     def usage_window:
       type == "object"
-      and ((has("percent_used") | not) or (.percent_used == null)
-        or ((.percent_used | type == "number")
-          and (.percent_used >= 0) and (.percent_used <= 100) and (.percent_used | floor == .)));
-    def session_window: usage_window and optional_string("resets_at");
-    def week_window: usage_window and (has("resets_at") | not);
+      and (.percent_used | . == null
+        or (type == "number" and . >= 0 and . <= 100 and (floor == .)))
+      and (.resets_at | . == null or type == "string");
     def call_item:
       type == "object"
       and (.key | slug(128))
@@ -145,10 +146,9 @@ validate_payload() {  # <data.json>
       or ((.charted_more | type == "number") and (.charted_more >= 0) and (.charted_more | floor == .)))
     and ((has("charted_warning_more") | not)
       or ((.charted_warning_more | type == "number") and (.charted_warning_more >= 0) and (.charted_warning_more | floor == .)))
-    and ((has("claude_usage") | not)
-      or ((.claude_usage | type == "object")
-        and ([.claude_usage.session | select(. != null) | session_window] | all)
-        and ([.claude_usage.week | select(. != null) | week_window] | all)))
+    and (.claude_usage | . == null
+      or (type == "object"
+        and ([(.session, .week) | select(. != null) | usage_window] | all)))
     and ([.captains_call[] | call_item] | all)
     and ([.underway[] | underway_item] | all)
     and ([.landed[] | landed_item] | all)

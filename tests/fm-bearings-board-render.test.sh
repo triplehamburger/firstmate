@@ -52,7 +52,7 @@ render_usage() {  # <home> <usage-json> [tz]
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  TZ="$tz" node "$HARNESS" "$home/.lavish/bearings-board.html" \
+  TZ="$tz" LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 node "$HARNESS" "$home/.lavish/bearings-board.html" \
     || fail "the built board could not be rendered"
 }
 
