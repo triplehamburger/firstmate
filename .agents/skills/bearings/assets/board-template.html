@@ -135,18 +135,21 @@ a { color: inherit; text-decoration: none; }
 .bb-brand__wm { font-family: var(--font-display); font-size: 23px; color: var(--text-strong); line-height: 1; }
 .bb-meta-mono { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint); white-space: nowrap; }
 
-/* open PRs, nav right slot - links only, the page never fetches anything */
-.bb-prs, .bb-prs__list { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
-.bb-prs[hidden] { display: none; }
-.bb-prs__count, .bb-prs__more {
-  font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--text-muted); white-space: nowrap; flex: none;
-}
-/* links keep their own width; the list clips instead of pushing the nav wider,
-   and the list and its overflow chip drop together once the nav is too narrow
-   to show any of them, leaving the count alone */
-.bb-prs__list a { flex: none; }
-@media (max-width: 900px) { .bb-prs__list, .bb-prs__more { display: none; } }
+/* nav usage bars - a build-time snapshot, never live */
+/* the author display:flex below outranks the UA [hidden] rule, so the hidden
+   state needs its own author rule to actually hold */
+.bb-usage { display: flex; align-items: center; gap: 18px; }
+.bb-usage[hidden] { display: none; }
+.bb-usage__item { display: flex; flex-direction: column; gap: 3px; width: 132px; }
+.bb-usage__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-muted); white-space: nowrap; }
+.bb-usage__label { text-transform: uppercase; letter-spacing: 0.07em; }
+.bb-usage__bar { height: 6px; border-radius: var(--radius-pill); background: var(--paper-300);
+  border: 1px solid var(--ink-300); overflow: hidden; }
+.bb-usage__bar--unknown { background: repeating-linear-gradient(135deg,
+  var(--paper-300) 0 4px, var(--paper-100) 4px 8px); }
+.bb-usage__fill { height: 100%; background: var(--rust-500); }
+.bb-usage__reset { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); white-space: nowrap; }
 
 .bb-main {
   max-width: var(--container-app); margin: 0 auto;
@@ -287,6 +290,9 @@ a { color: inherit; text-decoration: none; }
 
 @media (max-width: 900px) {
   .bb-cols { grid-template-columns: 1fr; }
+  /* the nav has no room for the bars here, so the whole widget goes, labels,
+     bars and reset time together - never a stranded fragment */
+  .bb-usage { display: none; }
 }
 </style>
 </head>
@@ -302,7 +308,7 @@ a { color: inherit; text-decoration: none; }
       </span>
       <span class="bb-brand__wm">bearings</span>
     </span>
-    <div class="bb-prs" id="bb-prs" hidden></div>
+    <div class="bb-usage" id="bb-usage" hidden></div>
   </div>
 </header>
 
@@ -460,23 +466,36 @@ __FM_BEARINGS_BOARD_DATA__
 
   document.getElementById("bb-provenance").textContent = data.schema + " · " + data.generated;
 
-  /* open PRs in the nav's right slot; absent or empty renders nothing */
-  var PR_INLINE_MAX = 4;
-  var prs = Array.isArray(data.prs) ? data.prs : [];
-  if (prs.length) {
-    var prBox = document.getElementById("bb-prs");
-    prBox.hidden = false;
-    prBox.appendChild(el("span", "bb-prs__count", prs.length + " open PR" + (prs.length === 1 ? "" : "s")));
-    var prList = el("div", "bb-prs__list");
-    prs.slice(0, PR_INLINE_MAX).forEach(function (p) {
-      var a = el("a", "bb-row__pr", p.repo + "#" + p.number);
-      a.href = p.url; a.title = p.title || p.url; a.target = "_blank"; a.rel = "noopener";
-      prList.appendChild(a);
+  /* nav usage bars: a snapshot of the payload, absent field renders nothing */
+  if (data.claude_usage && typeof data.claude_usage === "object") {
+    var usageBox = document.getElementById("bb-usage");
+    ["session", "week"].forEach(function (key) {
+      var w = data.claude_usage[key];
+      var pct = w && typeof w.percent_used === "number"
+        ? Math.max(0, Math.min(100, Math.round(w.percent_used))) : null;
+      var item = el("div", "bb-usage__item");
+      var head = el("div", "bb-usage__head");
+      head.appendChild(el("span", "bb-usage__label", key));
+      head.appendChild(el("span", "bb-usage__pct", pct === null ? "unavailable" : pct + "% used"));
+      item.appendChild(head);
+      var bar = el("div", "bb-usage__bar" + (pct === null ? " bb-usage__bar--unknown" : ""));
+      if (pct !== null) {
+        var fill = el("div", "bb-usage__fill");
+        fill.setAttribute("style", "width: " + pct + "%");
+        bar.appendChild(fill);
+      }
+      item.appendChild(bar);
+      if (key === "session" && w && typeof w.resets_at === "string") {
+        var at = new Date(w.resets_at);
+        if (!isNaN(at.getTime())) {
+          item.appendChild(el("div", "bb-usage__reset",
+            "resets " + at.toLocaleString([],
+              { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })));
+        }
+      }
+      usageBox.appendChild(item);
     });
-    prBox.appendChild(prList);
-    if (prs.length > PR_INLINE_MAX) {
-      prBox.appendChild(el("span", "bb-prs__more", "+" + (prs.length - PR_INLINE_MAX) + " more"));
-    }
+    usageBox.hidden = false;
   }
 
   /* stat strip */

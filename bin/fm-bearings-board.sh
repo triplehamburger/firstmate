@@ -39,6 +39,18 @@
 # string. Omitting `prs` entirely is valid and renders nothing. Anything else
 # refuses before the existing board is touched.
 #
+# The optional `claude_usage` object carries the captain's Claude token usage as
+# a build-time snapshot, with an optional `session` and an optional `week`
+# window. Each window is an object whose `percent_used` is an integer 0-100 and
+# whose `resets_at` is an ISO 8601 string. Every part of this field is optional
+# and degrades rather than refuses: an absent key, an explicit null, or a key
+# the widget never reads means not supplied, so a null or omitted window is
+# unavailable exactly like a null `percent_used`, and a null or omitted
+# `claude_usage` renders no usage widget at all. Only the `session` bar renders
+# a reset time; a `resets_at` on the `week` window is carried but never shown.
+# A value of the wrong type - a non-numeric or out-of-range percent, a
+# non-string reset time, a non-object window - still refuses the build.
+#
 # The board path is stable - $FM_HOME/.lavish/bearings-board.html - so a
 # re-invocation rebuilds the same file in place, which keeps the same Lavish
 # session URL and the same canonical process-event source id. Injection escapes
@@ -82,6 +94,11 @@ validate_payload() {  # <data.json>
       or (.[$name]
         | type == "string"
           and test("^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][^[:space:]]*)?$"));
+    def usage_window:
+      type == "object"
+      and (.percent_used | . == null
+        or (type == "number" and . >= 0 and . <= 100 and (floor == .)))
+      and (.resets_at | . == null or type == "string");
     def call_item:
       type == "object"
       and (.key | slug(128))
@@ -138,8 +155,9 @@ validate_payload() {  # <data.json>
       or ((.charted_more | type == "number") and (.charted_more >= 0) and (.charted_more | floor == .)))
     and ((has("charted_warning_more") | not)
       or ((.charted_warning_more | type == "number") and (.charted_warning_more >= 0) and (.charted_warning_more | floor == .)))
-    and ((has("prs") | not)
-      or ((.prs | type == "array") and ([.prs[] | pr_item] | all)))
+    and (.claude_usage | . == null
+      or (type == "object"
+        and ([(.session, .week) | select(. != null) | usage_window] | all)))
     and ([.captains_call[] | call_item] | all)
     and ([.underway[] | underway_item] | all)
     and ([.landed[] | landed_item] | all)
