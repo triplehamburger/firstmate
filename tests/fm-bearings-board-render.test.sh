@@ -27,12 +27,16 @@ make_home() {  # <name>
 }
 
 # Build the board from <charted-json> and return what the renderer produced.
-render() {  # <home> <charted-json> [charted_more] [charted_warning_more]
-  local home=$1 charted=$2 more=${3:-0} warning_more=${4:-0} data="$1/payload.json"
-  jq -n --argjson charted "$charted" --argjson more "$more" --argjson warning_more "$warning_more" '{
+# An empty <prs-json> is left out of the payload entirely, which is the ordinary
+# composition and must keep rendering exactly as it always did.
+render() {  # <home> <charted-json> [charted_more] [charted_warning_more] [prs-json]
+  local home=$1 charted=$2 more=${3:-0} warning_more=${4:-0} prs=${5:-[]} data="$1/payload.json"
+  jq -n --argjson charted "$charted" --argjson more "$more" --argjson warning_more "$warning_more" \
+    --argjson prs "$prs" '{
     schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-26T00:00Z",
     prs_live:false, captains_call:[], underway:[], landed:[],
-    charted:$charted, charted_more:$more, charted_warning_more:$warning_more}' > "$data"
+    charted:$charted, charted_more:$more, charted_warning_more:$warning_more}
+    | if ($prs | length) > 0 then .prs = $prs else . end' > "$data"
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \

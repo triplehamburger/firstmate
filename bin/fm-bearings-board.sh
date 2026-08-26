@@ -33,8 +33,11 @@
 # Captain's Call item explicitly carries `repo`; the composer fills it from the
 # snapshot and task records wherever known, and uses null or an empty string
 # only as the deliberate genuinely-no-repo marker. In that exceptional case
-# the template may display the routing id. Anything else refuses before the
-# existing board is touched.
+# the template may display the routing id. The optional top-level `prs` array
+# is the captain's open pull requests; each item carries `repo` (non-empty
+# string), `number` (positive integer), `url` (https), and an optional `title`
+# string. Omitting `prs` entirely is valid and renders nothing. Anything else
+# refuses before the existing board is touched.
 #
 # The optional `claude_usage` object carries the captain's Claude token usage as
 # a build-time snapshot, with an optional `session` and an optional `week`
@@ -127,6 +130,12 @@ validate_payload() {  # <data.json>
       type == "object" and repo_marker and (.id | nonempty_string)
       and (.what | nonempty_string) and (.owner | nonempty_string)
       and optional_https_url("pr_url");
+    def pr_item:
+      type == "object"
+      and (.repo | nonempty_string)
+      and (.number | type == "number" and . > 0 and floor == .)
+      and (has("url") and optional_https_url("url"))
+      and optional_string("title");
     def charted_item:
       type == "object" and repo_marker and (.id | slug(128))
       and (.title | nonempty_string) and (.reason | type == "string")

@@ -117,6 +117,16 @@ const errorText = [...byId.entries()]
   .filter(([k]) => k.startsWith("sel:"))
   .flatMap(([, n]) => n.children.map((c) => c.textContent))
   .join(" ");
+const prBox = document.getElementById("bb-prs");
+const prText = (cls) => prBox.children.find((c) => c.className.includes(cls))?.textContent ?? "";
+const prs = {
+  count: prText("bb-prs__count"),
+  overflow: prText("bb-prs__more"),
+  links: (prBox.children.find((c) => c.className.includes("bb-prs__list"))?.children ?? []).map((a) => ({
+    text: a.textContent, href: a.href, title: a.title, target: a.target, rel: a.rel,
+  })),
+};
+
 const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
