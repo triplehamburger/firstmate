@@ -165,6 +165,11 @@ test_build_refuses_malformed_payloads_before_touching_the_board() {
   [ "$rc" -ne 0 ] || fail "a non-string usage reset time was accepted"
 
   write_valid_payload "$data"
+  jq '.claude_usage = {"week": {"percent_used": 10, "resets_at": "2026-08-26T18:00:00Z"}}' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a reset time on the week window was accepted"
+
+  write_valid_payload "$data"
   jq '.claude_usage = "42%"' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
   [ "$rc" -ne 0 ] || fail "a non-object claude_usage was accepted"
