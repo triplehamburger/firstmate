@@ -3,7 +3,9 @@
 // asserted through the real template rather than by reading its source.
 //
 // Usage: node board-render-harness.mjs <built-board.html>
-// Prints one JSON document: { stats:[{n,label}], charted:[{title,sub,badges,pickable}] }
+// Prints one JSON document: { stats:[{n,label}],
+// charted:[{title,sub,badges,pickable}], empty:[], more:[],
+// usage:{hidden,items:[{label,pct,unknown,fill,reset}]}, error }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
