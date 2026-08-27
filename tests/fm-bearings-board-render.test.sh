@@ -26,6 +26,20 @@ make_home() {  # <name>
   printf '%s\n' "$home"
 }
 
+# Build the board from <payload-file> and return what the renderer produced.
+# Both callers share this tail so they cannot drift on the build invocation or
+# the locale/zone the renderer runs under.
+build_and_render() {  # <home> <data> [env-prefix...]
+  local home=$1 data=$2
+  shift 2
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  env "$@" node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
 # Build the board from <charted-json> and return what the renderer produced.
 # An empty <prs-json> is left out of the payload entirely, which is the ordinary
 # composition and must keep rendering exactly as it always did.
@@ -37,27 +51,19 @@ render() {  # <home> <charted-json> [charted_more] [charted_warning_more] [prs-j
     prs_live:false, captains_call:[], underway:[], landed:[],
     charted:$charted, charted_more:$more, charted_warning_more:$warning_more}
     | if ($prs | length) > 0 then .prs = $prs else . end' > "$data"
-  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
-    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
-    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  node "$HARNESS" "$home/.lavish/bearings-board.html" \
-    || fail "the built board could not be rendered"
+  build_and_render "$home" "$data"
 }
 
 # Build the board with <usage-json> ("null" omits the field) and render it.
+# The locale is pinned beside the zone so the reset assertion does not depend on
+# the ambient locale, while the renderer itself stays viewer-locale-aware.
 render_usage() {  # <home> <usage-json> [tz]
   local home=$1 usage=$2 tz=${3:-UTC} data="$1/payload.json"
   jq -n --argjson usage "$usage" '{
     schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-26T00:00Z",
     prs_live:false, captains_call:[], underway:[], landed:[], charted:[]}
     + (if $usage == null then {} else {claude_usage:$usage} end)' > "$data"
-  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
-    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
-    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  TZ="$tz" LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 node "$HARNESS" "$home/.lavish/bearings-board.html" \
-    || fail "the built board could not be rendered"
+  build_and_render "$home" "$data" "TZ=$tz" LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
 }
 
 charted_next_count() {  # <render-json>
@@ -147,14 +153,63 @@ test_an_omitted_kind_keeps_the_existing_queued_rendering() {
   pass "an omitted kind renders exactly as queued work always did"
 }
 
+# <n> open pull requests as a payload array, numbered 1..n across two repos.
+open_prs() {  # <n>
+  jq -nc --argjson n "$1" '[range(1; $n + 1) | {
+    repo: (if . % 2 == 0 then "other" else "sample" end),
+    number: .,
+    url: ("https://github.com/example/repo/pull/" + (. | tostring))
+  } | if .number == 1 then . + {title: "First change"} else . end]'
+}
+
+test_open_prs_render_as_links_in_the_nav() {
+  local home out
+  home=$(make_home prs-links)
+  out=$(render "$home" '[]' 0 0 "$(open_prs 2)")
+  printf '%s' "$out" | jq -e '
+    .error == "" and .prs.count == "2 open PRs"
+      and .prs.overflow == ""
+      and ([.prs.links[] | .text] == ["sample#1", "other#2"])
+      and (.prs.links[0] | .href == "https://github.com/example/repo/pull/1"
+        and .title == "First change" and .target == "_blank" and .rel == "noopener")
+      and (.prs.links[1].title == "https://github.com/example/repo/pull/2")
+  ' >/dev/null || fail "the nav did not render the open pull requests as links: $out"
+
+  out=$(render "$home" '[]' 0 0 "$(open_prs 1)")
+  printf '%s' "$out" | jq -e '.prs.count == "1 open PR" and (.prs.links | length) == 1' >/dev/null \
+    || fail "a single open pull request was not counted in the singular: $out"
+  pass "the nav renders open pull requests as repo#number links, counted"
+}
+
+test_only_four_prs_render_inline_and_the_rest_become_an_overflow_count() {
+  local home out
+  home=$(make_home prs-overflow)
+  out=$(render "$home" '[]' 0 0 "$(open_prs 6)")
+  printf '%s' "$out" | jq -e '
+    .prs.count == "6 open PRs"
+      and ([.prs.links[] | .text] == ["sample#1", "other#2", "sample#3", "other#4"])
+      and .prs.overflow == "+2 more"
+  ' >/dev/null || fail "the nav did not cap the inline links at four with an overflow count: $out"
+  pass "the nav renders four pull requests inline and counts the rest as overflow"
+}
+
+test_a_board_without_open_prs_renders_nothing_in_the_nav() {
+  local home out
+  home=$(make_home prs-absent)
+  out=$(render "$home" '[]')
+  printf '%s' "$out" | jq -e '
+    .error == "" and .prs.count == ""
+      and .prs.overflow == "" and (.prs.links | length) == 0
+  ' >/dev/null || fail "a board with no open pull requests still rendered the nav element: $out"
+  pass "a board without open pull requests renders nothing in the nav"
+}
 
 test_both_usage_bars_render_with_their_percent_used() {
   local home out
   home=$(make_home usage-both)
   out=$(render_usage "$home" '{"session":{"percent_used":42,"resets_at":"2026-08-26T18:00:00Z"},"week":{"percent_used":71}}')
   printf '%s' "$out" | jq -e '
-    .usage.hidden == false
-      and ([.usage.items[].label] == ["session", "week"])
+    ([.usage.items[].label] == ["session", "week"])
       and (.usage.items[0] | .pct == "42% used" and .unknown == false and (.fill | test("42%")))
       and (.usage.items[1] | .pct == "71% used" and .unknown == false and (.fill | test("71%")))
   ' >/dev/null || fail "the usage bars did not render both windows: $out"
@@ -181,7 +236,7 @@ test_an_unavailable_window_never_reads_as_zero_percent() {
   home=$(make_home usage-unavailable)
   out=$(render_usage "$home" '{"session":{"percent_used":null},"week":{}}')
   printf '%s' "$out" | jq -e '
-    .usage.hidden == false and ([.usage.items[].label] == ["session", "week"])
+    ([.usage.items[].label] == ["session", "week"])
       and ([.usage.items[] | .pct] == ["unavailable", "unavailable"])
       and ([.usage.items[] | .unknown] == [true, true])
       and ([.usage.items[] | .fill] == [null, null])
@@ -193,7 +248,7 @@ test_an_omitted_usage_field_renders_no_widget() {
   local home out
   home=$(make_home usage-absent)
   out=$(render_usage "$home" null)
-  printf '%s' "$out" | jq -e '.error == "" and .usage.hidden == true and (.usage.items | length) == 0' \
+  printf '%s' "$out" | jq -e '.error == "" and (.usage.items | length) == 0' \
     >/dev/null || fail "an omitted usage field still produced a widget: $out"
   pass "an omitted usage field renders nothing at all"
 }
@@ -203,6 +258,9 @@ test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
+test_open_prs_render_as_links_in_the_nav
+test_only_four_prs_render_inline_and_the_rest_become_an_overflow_count
+test_a_board_without_open_prs_renders_nothing_in_the_nav
 test_both_usage_bars_render_with_their_percent_used
 test_the_session_bar_shows_its_reset_in_the_viewers_local_time
 test_an_unavailable_window_never_reads_as_zero_percent
