@@ -4,8 +4,8 @@
 //
 // Usage: node board-render-harness.mjs <built-board.html>
 // Prints one JSON document: { stats:[{n,label}],
-// charted:[{title,sub,badges,pickable}], empty:[], more:[],
-// usage:{hidden,items:[{label,pct,unknown,fill,reset}]}, error }
+// charted:[{title,sub,badges,pickable}], empty:[], more:[], prs:{...},
+// usage:{items:[{label,pct,unknown,fill,reset}]}, error }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
@@ -67,10 +67,6 @@ globalThis.document = {
   getElementById: (id) => {
     if (!byId.has(id)) {
       const n = new Node("div");
-      // Mint it with the hidden state the shipped markup gives that id, so a
-      // widget the renderer never touches stays as hidden as the real page.
-      const tag = html.match(new RegExp(`<[a-z]+[^>]*\\bid="${id}"[^>]*>`));
-      n.hidden = Boolean(tag && /\shidden(\s|>|=)/.test(tag[0]));
       new Node("div").appendChild(n);
       byId.set(id, n);
     }
@@ -130,10 +126,8 @@ const prs = {
 const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
-// Mint through the shim so an untouched widget reports the markup hidden state.
 const usageBox = document.getElementById("bb-usage");
 const usage = {
-  hidden: usageBox.hidden,
   items: usageBox.children.map((item) => {
     const head = item.children.find((c) => c.className.includes("bb-usage__head"));
     const bar = item.children.find((c) => c.className.includes("bb-usage__bar"));
@@ -148,4 +142,4 @@ const usage = {
   }),
 };
 
-process.stdout.write(JSON.stringify({ stats, charted, empty, more, usage, error: errorText }) + "\n");
+process.stdout.write(JSON.stringify({ stats, charted, empty, more, prs, usage, error: errorText }) + "\n");

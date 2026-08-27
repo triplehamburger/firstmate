@@ -155,6 +155,8 @@ validate_payload() {  # <data.json>
       or ((.charted_more | type == "number") and (.charted_more >= 0) and (.charted_more | floor == .)))
     and ((has("charted_warning_more") | not)
       or ((.charted_warning_more | type == "number") and (.charted_warning_more >= 0) and (.charted_warning_more | floor == .)))
+    and ((has("prs") | not)
+      or ((.prs | type == "array") and ([.prs[] | pr_item] | all)))
     and (.claude_usage | . == null
       or (type == "object"
         and ([(.session, .week) | select(. != null) | usage_window] | all)))

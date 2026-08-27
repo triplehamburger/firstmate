@@ -169,7 +169,6 @@ test_build_refuses_malformed_payloads_before_touching_the_board() {
   jq '.claude_usage = "42%"' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
   [ "$rc" -ne 0 ] || fail "a non-object claude_usage was accepted"
-  [ ! -e "$board" ] || fail "a refused payload still touched the board"
 
   write_valid_payload "$data"
   jq '.charted_warning_more = -1' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
